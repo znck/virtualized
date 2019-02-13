@@ -1,0 +1,22 @@
+---
+  0 debug pnpm:scope: 
+    selected: 1
+    workspacePrefix: null
+  1 debug pnpm:package-json: 
+    initial: 
+      dependencies: 
+        sass-loader: "^7.1.0"
+      name: ""
+      version: ""
+      readme: "ERROR: No README data found!"
+      _id: "@"
+    prefix: "/usr/local/Cellar/node/11.0.0/pnpm-global/1"
+  2 error pnpm: 
+    message: 
+      code: "SHRINKWRAP_BREAKING_CHANGE"
+      filename: "/usr/local/Cellar/node/11.0.0/pnpm-global/1/node_modules/.shrinkwrap.yaml"
+    err: 
+      name: "Error"
+      message: "Shrinkwrap file /usr/local/Cellar/node/11.0.0/pnpm-global/1/node_modules/.shrinkwrap.yaml not compatible with current pnpm"
+      code: "SHRINKWRAP_BREAKING_CHANGE"
+      stack: "Error: Shrinkwrap file /usr/local/Cellar/node/11.0.0/pnpm-global/1/node_modules/.shrinkwrap.yaml not compatible with current pnpm\n    at /usr/local/lib/node_modules/pnpm/lib/node_modules/@pnpm/shrinkwrap-file/lib/read.js:80:15\n    at Generator.next (<anonymous>)\n    at fulfilled (/usr/local/lib/node_modules/pnpm/lib/node_modules/@pnpm/shrinkwrap-file/lib/read.js:4:58)"
