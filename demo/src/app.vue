@@ -13,7 +13,7 @@ export default {
     return {
       height: ~~((window.innerHeight - 16) * 0.33333),
       width: window.innerWidth - 16,
-      items: Array(100)
+      items: Array(10000)
         .fill(0)
         .map(() => Math.random()),
     }
@@ -29,9 +29,9 @@ export default {
 
 <template>
   <div class="app">
-    <Carousal :items="items" :width="width" :item-width="440" v-slot="{ index, item, key }" :style="{ height: height + 'px' }">
-      <div class="item" :style="{backgroundColor: `hsl(${(index * 10) % 361}, 60%, 80%)`, width: '440px' }">
-        <img :key="key" :src="`https://picsum.photos/400/200?image=${index % 10}`">
+    <Carousal :items="items" :width="width" :item-width="300" v-slot="{ index, item, key }" :style="{ height: height + 'px' }">
+      <div class="item" :style="{backgroundColor: `hsl(${(index * 10) % 361}, 60%, 80%)`, width: '300px' }">
+        <img :key="key" :src="`https://picsum.photos/300/150?image=${index % 10}`">
         <Item :msg="`${item} at index ${index}`"/>
       </div>
     </Carousal>
@@ -52,6 +52,10 @@ export default {
   color: rgba(0, 0, 0, 0.87);
   flex-direction: column;
   padding: 16px;
+}
+
+.item img {
+  max-height: 75%;
 }
 
 .item:hover {
