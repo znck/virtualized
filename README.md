@@ -11,9 +11,9 @@
 
 ## Introduction
 
-Efficiently render large lists and tables
+Efficiently render large lists and tables.
 
-> **WARNING:** ⚠️ This is an experimental project. Wait for 1.0 release for using in production.
+> **WARNING:** ⚠️ This is an experimental project. Wait for 1.0 release for using in production but checkout cool [demo](https://virtualized.surge.sh).
 
 ## Install
 
@@ -24,7 +24,7 @@ npm add @znck/virtualized
 ## Usage
 
 ```js
-import S from '@znck/virtualized'
+import { List, Carousal, AbstractList } from '@znck/virtualized'
 
 ...
 ```
