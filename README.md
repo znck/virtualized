@@ -29,6 +29,10 @@ import S from '@znck/virtualized'
 ...
 ```
 
+## Credits
+
+This project is highly inspired from Brian Vaughn's [react-virtualized](https://github.com/bvaughn/react-virtualized) and Guillaume Chau's [vue-virtual-scroller](https://github.com/akryum/vue-virtual-scroller).
+
 ## Contributing
 
 Please read [CONTRIBUTING.md](CONTRIBUTING.md) for details on our code of conduct, and the process for submitting pull requests to us.
