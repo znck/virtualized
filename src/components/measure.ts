@@ -21,6 +21,8 @@ interface MeasureData {}
 interface MeasureProps {
   rowIndex: number
   columnIndex: number
+  height: number | false
+  width: number | false
 }
 
 interface MeasureMethods {
@@ -45,6 +47,10 @@ export default contract(
     props: {
       rowIndex: PropTypes.number.isRequired,
       columnIndex: PropTypes.number.value(0),
+      height: PropTypes.oneOfType(PropTypes.number, PropTypes.oneOf(false))
+        .isRequired,
+      width: PropTypes.oneOfType(PropTypes.number, PropTypes.oneOf(false))
+        .isRequired,
     },
 
     inject: {
@@ -58,7 +64,9 @@ export default contract(
 
     mounted() {
       this.measureIfRequired()
-      if (this.$el) this.observer.observe(this.$el)
+      if (this.$el) {
+        this.observer.observe(this.$el)
+      }
     },
 
     updated() {
@@ -68,13 +76,26 @@ export default contract(
 
     methods: {
       measure(): Size {
-        const height = ~~this.$el.offsetHeight
-        const width = ~~this.$el.offsetWidth
-        const size = { height, width }
+        const size: Partial<Size> = {}
+        if (this.height !== false) {
+          size.height = ~~this.$el.offsetHeight
+        }
+        if (this.width !== false) {
+          size.width = ~~this.$el.offsetWidth
+        }
 
-        this.$emit('measure', this.rowIndex, this.columnIndex, size)
+        if (
+          ('height' in size && size.height !== this.height) ||
+          ('width' in size && size.width !== this.width)
+        ) {
+          this.$emit('measure', this.rowIndex, this.columnIndex, size)
+        }
 
-        return size
+        return {
+          height: 0,
+          width: 0,
+          ...size,
+        }
       },
 
       measureOrCached(force = false) {

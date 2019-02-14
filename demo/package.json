@@ -10,5 +10,8 @@
     "typescript": "^3.0.0",
     "vue": "^2.6.6",
     "vue-template-compiler": "^2.6.6"
+  },
+  "dependencies": {
+    "@vue/devtools": "^4.1.5"
   }
 }

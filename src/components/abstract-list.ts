@@ -4,13 +4,14 @@ import { InjectKey, ScrollDirection, ScrollTrigger } from '../constants'
 import {
   createMeasureCache,
   overScanRange,
-  getWrapperVnode,
+  getFirstVnode,
   MeasureCache,
-  ScaledPositionManager,
-  createScalingPositionManager,
+  CompressedPositionManager,
+  createCompressedPositionManager,
   IndexRange,
   mergeVnode,
   contract,
+  OffsetFitMode,
 } from '../helpers'
 import ResizeObserver from 'resize-observer-polyfill'
 import Measure, { MeasureEvent, MeasureEventInit } from './measure'
@@ -30,18 +31,18 @@ interface ScrollRenderState extends ScrollRenderRange {
 interface AbstractListInterface extends Vue {
   resizeObserver: ResizeObserver
   measured: MeasureCache
-  manager: ScaledPositionManager
+  manager: CompressedPositionManager
   vnodeCache: { [key: number]: VNode }
   current: ScrollRenderRange
   savedScrollState: ScrollRenderState
   poolSize: number
+  _horizontal: boolean
   _scrollToIndex: number | null
   _hasPendingRender: (() => void) | null
   _ignoreScrollEvents: boolean
 }
 interface AbstractListData {
-  scrollTop: number
-  scrollToIndex: number
+  scrollOffset: number
   scrollTrigger: ScrollTrigger
   scrollDirection: ScrollDirection
 }
@@ -49,6 +50,8 @@ interface AbstractListMethods {
   onScroll(event: MouseEvent): void
   onItemMeasure(index: number): void
   computePoolSize(): void
+  scrollTo(offset: number, preventEvent?: boolean): void
+  scrollToIndex(index: number, mode?: OffsetFitMode): void
   computeScrollPosition(scrollTop: number, trigger: ScrollTrigger): void
   saveCurrentScrollState(): void
   forceRenderInNextFrame(done: () => void): void
@@ -57,10 +60,11 @@ interface AbstractListMethods {
 }
 interface AbstractListComputed {}
 interface AbstractListProps {
+  horizontal: boolean
   itemsCount: number
   overscanCount: number
-  containerHeight: number
-  estimatedItemHeight: number
+  containerSize: number
+  estimatedItemSize: number
 }
 
 export default contract(
@@ -74,10 +78,11 @@ export default contract(
     name: 'AbstractList',
 
     props: {
-      containerHeight: PropTypes.number.isRequired,
+      horizontal: PropTypes.bool.value(false),
       itemsCount: PropTypes.number.isRequired,
       overscanCount: PropTypes.number.value(1),
-      estimatedItemHeight: PropTypes.number.value(30),
+      containerSize: PropTypes.number.isRequired,
+      estimatedItemSize: PropTypes.number.value(30),
     },
 
     provide() {
@@ -97,29 +102,32 @@ export default contract(
 
     data() {
       return {
-        scrollTop: 0,
+        scrollOffset: 0,
         scrollDirection: ScrollDirection.FORWARD,
         scrollTrigger: ScrollTrigger.NONE,
-        scrollToIndex: 0,
       }
     },
 
     created() {
       const vm = this
+      this._horizontal = this.horizontal // cache and ignore changes
       const measured = (this.measured = createMeasureCache({
-        height: this.estimatedItemHeight,
+        ...(this._horizontal
+          ? { width: this.estimatedItemSize }
+          : { height: this.estimatedItemSize }),
         key: row => `${row}`,
       }))
-      const manager = (this.manager = createScalingPositionManager({
+      const manager = (this.manager = createCompressedPositionManager({
         count: this.itemsCount,
-        estimatedCellSize: this.estimatedItemHeight,
-        sizeGetter: index =>
-          measured.has(index) ? measured.get(index).height : null,
+        estimatedCellSize: this.estimatedItemSize,
+        sizeGetter: this._horizontal
+          ? index => (measured.has(index) ? measured.get(index).width : null)
+          : index => (measured.has(index) ? measured.get(index).height : null),
       }))
 
       this.current = {
         get visible() {
-          return manager.find(vm.scrollTop, vm.containerHeight)
+          return manager.find(vm.scrollOffset, vm.containerSize)
         },
         get rendered() {
           return overScanRange(
@@ -166,7 +174,7 @@ export default contract(
         this.manager.unset(index)
         this.forceRenderInNextFrame(() => {
           if (this._scrollToIndex) {
-            this.scrollToIndex = this._scrollToIndex
+            this._scrollToIndex = null
           }
         })
       },
@@ -175,8 +183,8 @@ export default contract(
         const { offset, size } = this.manager.get(index)
         let occluded = 0
 
-        if (offset <= this.scrollTop && this.scrollTop <= offset + size) {
-          occluded = this.scrollTop - offset
+        if (offset <= this.scrollOffset && this.scrollOffset <= offset + size) {
+          occluded = this.scrollOffset - offset
         }
 
         this.savedScrollState = {
@@ -192,23 +200,25 @@ export default contract(
         if (this._ignoreScrollEvents) return
 
         const el = (event.target || this.$el) as HTMLElement
-
-        const scrollTop = Math.max(0, el.scrollTop)
+        const scrollOffset = Math.max(
+          0,
+          this._horizontal ? el.scrollLeft : el.scrollTop
+        )
         this._scrollToIndex = null // cancel pending scroll to index
 
-        this.computeScrollPosition(scrollTop, ScrollTrigger.OBSERVED)
+        this.computeScrollPosition(scrollOffset, ScrollTrigger.OBSERVED)
       },
 
-      computeScrollPosition(scrollTop, trigger = ScrollTrigger.REQUESTED) {
-        if (scrollTop < 0) return // Guard against negative scroll
+      computeScrollPosition(scrollOffset, trigger = ScrollTrigger.REQUESTED) {
+        if (scrollOffset < 0) return // Guard against negative scroll
 
-        if (scrollTop !== this.scrollTop) {
+        if (scrollOffset !== this.scrollOffset) {
           this.scrollTrigger = trigger
           this.scrollDirection =
-            scrollTop < this.scrollTop
+            scrollOffset < this.scrollOffset
               ? ScrollDirection.FORWARD
               : ScrollDirection.REVERSE
-          this.scrollTop = scrollTop
+          this.scrollOffset = scrollOffset
         }
       },
 
@@ -231,33 +241,58 @@ export default contract(
       computePoolSize() {
         const { start, end } = this.current.rendered
 
-        this.poolSize = Math.max(this.poolSize || 1, end - start + 1)
+        const prevPoolSize = this.poolSize || 1
+
+        this.poolSize = Math.max(prevPoolSize, end - start + 1)
+      },
+
+      scrollTo(offset, preventEvent = false) {
+        const prevValue = this._ignoreScrollEvents
+        this._ignoreScrollEvents = preventEvent
+        this._horizontal
+          ? (this.$el.scrollLeft = offset)
+          : (this.$el.scrollTop = offset)
+        this._ignoreScrollEvents = prevValue
+      },
+
+      scrollToIndex(index, mode = OffsetFitMode.AUTO) {
+        this.scrollTo(
+          this.manager.computeUpdatedOffset(
+            index,
+            this.scrollOffset,
+            this.containerSize,
+            mode
+          )
+        )
       },
 
       renderItem(index) {
-        const { offset, size: height } = this.manager.get(index)
+        const { offset, size } = this.manager.get(index)
         const key = index % this.poolSize
+        const compressedOffset = this.manager.compressIfRequired(
+          offset,
+          this.containerSize
+        )
         const vnode = this.$createElement(
           Measure,
           {
             keepAlive: true,
             key,
-            style: {
-              position: 'absolute',
-              top: `${offset}px`,
-              width: '100%',
-            },
             attrs: { key },
-            props: { rowIndex: index },
+            props: {
+              rowIndex: index,
+              height: this._horizontal ? false : size,
+              width: this._horizontal ? size : false,
+            },
             on: { measure: this.onItemMeasure },
           },
-          [
-            this.$scopedSlots.item!({
-              index,
-              offset,
-              height,
-            }),
-          ]
+          this.$scopedSlots.item!({
+            key,
+            index,
+            offset,
+            size,
+            compressedOffset,
+          })
         )
 
         if (this.vnodeCache[key])
@@ -294,29 +329,21 @@ export default contract(
       this.computePoolSize()
       this.saveCurrentScrollState()
 
-      const container = getWrapperVnode(this.$scopedSlots.container) || h('div')
-      const contents = getWrapperVnode(this.$scopedSlots.contents) || h('div')
+      const container = getFirstVnode(
+        this.$scopedSlots.container!({ size: this.containerSize })
+      )
+      const contents = getFirstVnode(
+        this.$scopedSlots.contents!({ size: this.manager.size })
+      )
 
       mergeVnode(container, {
         data: {
-          style: {
-            height: this.containerHeight + 'px',
-            overflowY: 'auto',
-            boxSizing: 'border-box',
-          },
-          on: { scroll: this.onScroll },
+          on: { '&scroll': this.onScroll },
         },
         children: [contents],
       })
 
       mergeVnode(contents, {
-        data: {
-          style: {
-            height: this.manager.size + 'px',
-            position: 'relative',
-            overflow: 'hidden',
-          },
-        },
         children: this.renderListItems(),
       })
 

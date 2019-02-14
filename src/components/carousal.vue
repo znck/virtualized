@@ -12,14 +12,14 @@ interface ListComputed {
 interface ListProps {
   tag: string
   items: any[] | number
-  height: number
+  width: number
   buffer: number
-  itemHeight: number
+  itemWidth: number
 }
 
 export default contract(
   Vue.extend<{}, {}, ListComputed, ListProps>({
-    name: 'List',
+    name: 'Carousal',
 
     components: {
       AbstractList,
@@ -30,9 +30,9 @@ export default contract(
     props: {
       tag: PropTypes.string.value('div'),
       items: PropTypes.oneOfType(PropTypes.number, PropTypes.array).isRequired,
-      height: PropTypes.number.isRequired,
+      width: PropTypes.number.isRequired,
       buffer: PropTypes.number.value(3),
-      itemHeight: PropTypes.number.value(100),
+      itemWidth: PropTypes.number.value(100),
     },
 
     computed: {
@@ -50,10 +50,11 @@ export default contract(
     render(h) {
       return h(AbstractList, {
         props: {
+          horizontal: true,
           itemsCount: this.count,
           overscanCount: this.buffer,
-          containerSize: this.height,
-          estimatedItemSize: this.itemHeight,
+          containerSize: this.width,
+          estimatedItemSize: this.itemWidth,
         },
         scopedSlots: {
           item: ({ index, compressedOffset }) => {
@@ -65,8 +66,9 @@ export default contract(
               data: {
                 style: {
                   position: 'absolute',
-                  top: `${compressedOffset}px`,
-                  width: '100%',
+                  top: '0',
+                  left: `${compressedOffset}px`,
+                  height: '100%',
                 },
               },
             })
@@ -76,8 +78,8 @@ export default contract(
           container: ({ size }) => [
             h('div', {
               style: {
-                height: size + 'px',
-                overflowY: 'auto',
+                width: size + 'px',
+                overflowX: 'auto',
                 boxSizing: 'border-box',
                 '-webkit-overflow-scrolling': 'touch',
               },
@@ -88,8 +90,8 @@ export default contract(
           contents: ({ size }) => [
             h(this.tag, {
               style: {
-                height: size + 'px',
-                width: '100%',
+                height: '100%',
+                width: size + 'px',
                 position: 'relative',
                 overflow: 'hidden',
               },

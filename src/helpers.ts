@@ -82,21 +82,34 @@ export interface Position {
   size: number
 }
 
+export const enum OffsetFitMode {
+  AUTO,
+  START,
+  CENTER,
+  END,
+}
+
 export interface PositionManagerConfig {
   count: number
   estimatedCellSize: number
   sizeGetter(index: number): number | null
 }
 
-export interface PositionManager {
+export interface PositionManager<T = PositionManagerConfig> {
   store?: any
   length: number
   size: number
   lastMeasuredCell: Position
-  configure(options: Partial<PositionManagerConfig>): void
+  configure(options: Partial<T>): void
   get(index: number): Position
   unset(index: number): void
   find(offset: number, viewport: number): IndexRange
+  computeUpdatedOffset(
+    index: number,
+    offset: number,
+    viewport: number,
+    mode?: OffsetFitMode
+  ): number
 }
 
 export function createPositionManager({
@@ -205,10 +218,67 @@ export function createPositionManager({
 
       return { start, end }
     },
+    computeUpdatedOffset(index, offset, viewport, mode = OffsetFitMode.AUTO) {
+      const cell = manager.get(index)
+      const minOffset = cell.offset - viewport + cell.size
+      const maxOffset = cell.offset
+
+      let idealOffset
+
+      switch (mode) {
+        case OffsetFitMode.START:
+          idealOffset = maxOffset
+          break
+        case OffsetFitMode.START:
+          idealOffset = maxOffset - ~~((viewport - cell.size) / 2)
+          break
+        case OffsetFitMode.END:
+          idealOffset = minOffset
+          break
+        default:
+          idealOffset = Math.max(minOffset, Math.min(maxOffset, offset))
+          break
+      }
+
+      return Math.max(0, Math.min(manager.size - viewport, idealOffset))
+    },
   }
 
   function nearestCell(offset: number): number {
-    return binarySearch(0, count - 1, Math.max(0, offset))
+    const cell = manager.lastMeasuredCell
+
+    if (offset <= cell.offset) {
+      return binarySearch(0, lastMeasuredIndex, Math.max(0, offset))
+    }
+
+    return binarySearchInEstimatedOffsets(offset)
+  }
+
+  function binarySearchInEstimatedOffsets(offset: number): number {
+    let low = lastMeasuredIndex + 1
+    let high = count - 1
+    const last = manager.lastMeasuredCell
+    const measuredOffset = last.offset + last.size
+
+    while (low <= high) {
+      const mid = low + ~~((high - low) / 2)
+      const currentOffset =
+        measuredOffset + (mid - lastMeasuredIndex - 1) * estimatedCellSize
+
+      if (currentOffset === offset) {
+        return mid
+      } else if (currentOffset < offset) {
+        low = mid + 1
+      } else {
+        high = mid - 1
+      }
+    }
+
+    if (low > 0) {
+      return low - 1
+    }
+
+    return 0
   }
 
   function binarySearch(low: number, high: number, offset: number): number {
@@ -235,49 +305,101 @@ export function createPositionManager({
   return manager
 }
 
-export interface ScaledPositionManagerConfig extends PositionManagerConfig {
+export interface CompressedPositionManagerConfig extends PositionManagerConfig {
   maxScrollSize?: number
 }
-export interface ScaledPositionManager extends PositionManager {
-  hasScaledOffsets: boolean
+export interface CompressedPositionManager
+  extends PositionManager<CompressedPositionManagerConfig> {
+  hasCompressedOffsets: boolean
+  compressIfRequired(offset: number, viewport: number): number
 }
 
-export function createScalingPositionManager({
+export function createCompressedPositionManager({
   maxScrollSize = 1.5e9,
   ...options
-}: ScaledPositionManagerConfig): ScaledPositionManager {
+}: CompressedPositionManagerConfig): CompressedPositionManager {
   const manager = createPositionManager(options)
-  const scalingManager: ScaledPositionManager = {
+  const compressed: CompressedPositionManager = {
     ...manager,
-    get hasScaledOffsets() {
-      return false
+    get hasCompressedOffsets() {
+      return manager.size > maxScrollSize
     },
     get length() {
       return manager.length
     },
     get size() {
-      return manager.size
+      return Math.min(maxScrollSize, manager.size)
     },
     get lastMeasuredCell() {
       return manager.lastMeasuredCell
     },
+    configure(options) {
+      if (options.maxScrollSize) maxScrollSize = options.maxScrollSize
+      manager.configure(options)
+    },
+    find(offset, viewport) {
+      offset = decompressOffset(offset, viewport)
+
+      return manager.find(offset, viewport)
+    },
+    computeUpdatedOffset(index, offset, viewport, mode) {
+      offset = decompressOffset(offset, viewport)
+
+      return compressOffset(
+        manager.computeUpdatedOffset(index, offset, viewport, mode),
+        viewport
+      )
+    },
+    compressIfRequired(offset, viewport) {
+      if (this.hasCompressedOffsets) {
+        return compressOffset(offset, viewport)
+      }
+
+      return offset
+    },
   }
 
-  return scalingManager
-}
+  function decompressOffset(offset: number, viewport: number): number {
+    const size = manager.size
+    const safeSize = compressed.size
 
-import { VNode } from 'vue'
-import { ScopedSlot } from 'vue/types/vnode'
-export function getWrapperVnode(fn?: ScopedSlot): VNode | null {
-  if (fn) {
-    const nodes = fn({})
+    if (size === safeSize) {
+      return offset
+    } else {
+      const offsetPercentage = percentage(offset, viewport, size)
 
-    if (nodes && nodes.length) {
-      return nodes[0]
+      return ~~(offsetPercentage * (safeSize - viewport))
     }
   }
 
-  return null
+  function compressOffset(offset: number, viewport: number): number {
+    const size = manager.size
+    const safeSize = compressed.size
+
+    if (size === safeSize) {
+      return offset
+    } else {
+      const offsetPercentage = percentage(offset, viewport, safeSize)
+
+      return ~~(offsetPercentage * (size - viewport))
+    }
+  }
+
+  function percentage(offset: number, viewport: number, size: number): number {
+    return size <= viewport ? 0 : offset / (size - viewport)
+  }
+
+  return compressed
+}
+
+import { VNode } from 'vue'
+import { ScopedSlotChildren } from 'vue/types/vnode'
+export function getFirstVnode(nodes: ScopedSlotChildren): VNode {
+  if (nodes && nodes.length) {
+    return nodes[0]
+  }
+
+  throw new Error('No content rendered')
 }
 
 function mergeVnodeMulti(target: any, source: any, key: string) {
@@ -332,4 +454,8 @@ export function contract<T>(component: T): T {
   delete (component as any)._Ctor
 
   return component
+}
+
+function looseEqual<T>(a: T[], b: T[]): boolean {
+  return a === b || (a.length === b.length && a.every(item => b.includes(item)))
 }
