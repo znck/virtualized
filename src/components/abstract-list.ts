@@ -189,15 +189,12 @@ export default contract(
         }
       },
       onScroll(event) {
-        if (this._ignoreScrollEvents)
-          return console.log('Scrolling but ignored')
+        if (this._ignoreScrollEvents) return
 
         const el = (event.target || this.$el) as HTMLElement
 
         const scrollTop = Math.max(0, el.scrollTop)
         this._scrollToIndex = null // cancel pending scroll to index
-
-        console.log('Scrolling!')
 
         this.computeScrollPosition(scrollTop, ScrollTrigger.OBSERVED)
       },
