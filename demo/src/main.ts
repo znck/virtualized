@@ -1,6 +1,7 @@
 // @ts-ignore
 // import devtools from '@vue/devtools'
 import Vue from 'vue'
+import router from './router'
 import App from './app.vue'
 
 console.log('Using vue ' + Vue.version)
@@ -18,4 +19,6 @@ if (process.env.NODE_ENV !== 'production') {
 new Vue({
   el: '#app',
   render: h => h(App),
+  // @ts-ignore
+  router,
 })
