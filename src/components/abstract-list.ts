@@ -25,7 +25,6 @@ interface ScrollRenderState extends ScrollRenderRange {
   readonly index: number
   readonly offset: number
   readonly size: number
-  readonly occluded: number
 }
 
 interface AbstractListInterface extends Vue {
@@ -52,7 +51,7 @@ interface AbstractListMethods {
   computePoolSize(): void
   scrollTo(offset: number, preventEvent?: boolean, smooth?: boolean): void
   scrollToIndex(index: number, mode?: OffsetFitMode, smooth?: boolean): void
-  computeScrollPosition(scrollTop: number, trigger: ScrollTrigger): void
+  computeScrollPosition(offset: number, trigger: ScrollTrigger): void
   saveCurrentScrollState(): void
   forceRenderInNextFrame(done: () => void): void
   renderListItems(): VNode[]
@@ -173,18 +172,13 @@ export default contract(
         this.manager.unset(index)
         this.forceRenderInNextFrame(() => {
           if (this._scrollToIndex) {
-            this._scrollToIndex = null
+            this._scrollToIndex = null // TODO: Adjust on resize.
           }
         })
       },
       saveCurrentScrollState() {
         const index = this.current.visible.start
         const { offset, size } = this.manager.get(index)
-        let occluded = 0
-
-        if (offset <= this.scrollOffset && this.scrollOffset <= offset + size) {
-          occluded = this.scrollOffset - offset
-        }
 
         this.savedScrollState = {
           visible: this.current.visible,
@@ -192,7 +186,6 @@ export default contract(
           index,
           offset,
           size,
-          occluded,
         }
       },
       onScroll(event) {

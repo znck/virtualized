@@ -78,10 +78,10 @@ export default contract(
       measure(): Size {
         const size: Partial<Size> = {}
         if (this.height !== false) {
-          size.height = ~~this.$el.offsetHeight
+          size.height = this.$el.offsetHeight
         }
         if (this.width !== false) {
-          size.width = ~~this.$el.offsetWidth
+          size.width = this.$el.offsetWidth
         }
 
         if (

@@ -35,10 +35,13 @@ export interface MeasureCacheConfig {
 
 export interface MeasureCache {
   has(row: number, column?: number): boolean
+  hasMax(row: number, column: number): boolean
   get(row: number, column?: number): Size
   set(row: number, column: number, size: Size): void
   is(row: number, column: number, size?: Size): boolean
   remove(row: number, column?: number): void
+  rowHeight(row: number): number
+  columnWidth(row: number): number
 }
 
 const DEFAULT_MEASURE_CACHE_CONFIG: MeasureCacheConfig = {
@@ -49,18 +52,38 @@ const DEFAULT_MEASURE_CACHE_CONFIG: MeasureCacheConfig = {
 
 export function createMeasureCache(options: Partial<MeasureCacheConfig> = {}) {
   const { key, height, width } = { ...DEFAULT_MEASURE_CACHE_CONFIG, ...options }
-
+  const rowHeights: { [key: number]: { value: number; valid: boolean } } = {}
+  const columnWidths: { [key: number]: { value: number; valid: boolean } } = {}
   const fallbackSize: Size = Object.freeze({ height, width })
   const store: { [key: string]: Size } = {}
   const cache: MeasureCache = {
     has(row, column = 0) {
       return key(row, column) in store
     },
+    hasMax(row, column) {
+      if (column === Infinity) {
+        return !!rowHeights[row] && rowHeights[row].valid
+      }
+
+      if (row === Infinity) {
+        return !!columnWidths[column] && columnWidths[column].valid
+      }
+
+      return cache.has(row, column)
+    },
     get(row, column = 0) {
       return store[key(row, column)] || fallbackSize
     },
     set(row, column, size) {
       store[key(row, column)] = size
+      rowHeights[row] = {
+        valid: true,
+        value: Math.max(size.height, cache.rowHeight(row)),
+      }
+      columnWidths[column] = {
+        valid: true,
+        value: Math.max(size.width, cache.columnWidth(column)),
+      }
     },
     is(row, column, size) {
       const currentSize = cache.get(row, column)
@@ -71,6 +94,28 @@ export function createMeasureCache(options: Partial<MeasureCacheConfig> = {}) {
     },
     remove(row, column = 0) {
       delete store[key(row, column)]
+      rowHeights[row] = {
+        valid: false,
+        value: cache.rowHeight(row),
+      }
+      columnWidths[column] = {
+        valid: false,
+        value: cache.columnWidth(column),
+      }
+    },
+    rowHeight(row) {
+      if (row in rowHeights) {
+        return rowHeights[row].value
+      }
+
+      return height
+    },
+    columnWidth(column) {
+      if (column in columnWidths) {
+        return columnWidths[column].value
+      }
+
+      return width
     },
   }
 
@@ -360,7 +405,7 @@ export function createCompressedPositionManager({
         return Math.round(offsetPercentage * (safeSize - size))
       }
 
-      return offset
+      return 0
     },
   }
 
