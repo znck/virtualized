@@ -50,12 +50,11 @@ interface AbstractListMethods {
   onScroll(event: MouseEvent): void
   onItemMeasure(index: number): void
   computePoolSize(): void
-  scrollTo(offset: number, preventEvent?: boolean): void
-  scrollToIndex(index: number, mode?: OffsetFitMode): void
+  scrollTo(offset: number, preventEvent?: boolean, smooth?: boolean): void
+  scrollToIndex(index: number, mode?: OffsetFitMode, smooth?: boolean): void
   computeScrollPosition(scrollTop: number, trigger: ScrollTrigger): void
   saveCurrentScrollState(): void
   forceRenderInNextFrame(done: () => void): void
-  renderItem(index: number): VNode
   renderListItems(): VNode[]
 }
 interface AbstractListComputed {}
@@ -241,73 +240,77 @@ export default contract(
       computePoolSize() {
         const { start, end } = this.current.rendered
 
-        const prevPoolSize = this.poolSize || 1
+        const prevPoolSize = this.poolSize || 2
 
-        this.poolSize = Math.max(prevPoolSize, end - start + 1)
+        this.poolSize = Math.max(prevPoolSize, end - start + 2)
       },
 
-      scrollTo(offset, preventEvent = false) {
+      scrollTo(offset, preventEvent = false, smooth = true) {
         const prevValue = this._ignoreScrollEvents
         this._ignoreScrollEvents = preventEvent
         this._horizontal
-          ? (this.$el.scrollLeft = offset)
-          : (this.$el.scrollTop = offset)
+          ? this.$el.scrollTo({
+              left: offset,
+              behavior: smooth ? 'smooth' : 'auto',
+            })
+          : this.$el.scrollTo({
+              top: offset,
+              behavior: smooth ? 'smooth' : 'auto',
+            })
         this._ignoreScrollEvents = prevValue
       },
 
-      scrollToIndex(index, mode = OffsetFitMode.AUTO) {
+      scrollToIndex(index, mode = OffsetFitMode.AUTO, smooth = false) {
         this.scrollTo(
           this.manager.computeUpdatedOffset(
             index,
             this.scrollOffset,
             this.containerSize,
             mode
-          )
+          ),
+          false,
+          smooth
         )
-      },
-
-      renderItem(index) {
-        const { offset, size } = this.manager.get(index)
-        const key = index % this.poolSize
-        const compressedOffset = this.manager.compressIfRequired(
-          offset,
-          this.containerSize
-        )
-        const vnode = this.$createElement(
-          Measure,
-          {
-            keepAlive: true,
-            key,
-            attrs: { key },
-            props: {
-              rowIndex: index,
-              height: this._horizontal ? false : size,
-              width: this._horizontal ? size : false,
-            },
-            on: { measure: this.onItemMeasure },
-          },
-          this.$scopedSlots.item!({
-            key,
-            index,
-            offset,
-            size,
-            compressedOffset,
-          })
-        )
-
-        if (this.vnodeCache[key])
-          vnode.componentInstance = this.vnodeCache[key].componentInstance
-        else this.vnodeCache[key] = vnode
-
-        return vnode
       },
 
       renderListItems() {
         const { start, end } = this.current.rendered
         const children = []
+        const offsetAdjustment = this.manager.adjustOffset(
+          this.scrollOffset,
+          this.containerSize
+        )
 
-        for (let i = start; i <= end; ++i) {
-          children.push(this.renderItem(i))
+        for (let index = start; index <= end; ++index) {
+          const { offset, size } = this.manager.get(index)
+          const key = index % this.poolSize
+          const compressedOffset = offset + offsetAdjustment
+          const vnode = this.$createElement(
+            Measure,
+            {
+              keepAlive: true,
+              key,
+              attrs: { key },
+              props: {
+                rowIndex: index,
+                height: this._horizontal ? false : size,
+                width: this._horizontal ? size : false,
+              },
+              on: { measure: this.onItemMeasure },
+            },
+            this.$scopedSlots.item!({
+              key,
+              index,
+              offset,
+              size,
+              compressedOffset,
+            })
+          )
+
+          if (this.vnodeCache[key])
+            vnode.componentInstance = this.vnodeCache[key].componentInstance
+          else this.vnodeCache[key] = vnode
+          children.push(vnode)
         }
 
         return children

@@ -229,8 +229,8 @@ export function createPositionManager({
         case OffsetFitMode.START:
           idealOffset = maxOffset
           break
-        case OffsetFitMode.START:
-          idealOffset = maxOffset - ~~((viewport - cell.size) / 2)
+        case OffsetFitMode.CENTER:
+          idealOffset = Math.round(maxOffset - (viewport - cell.size) / 2)
           break
         case OffsetFitMode.END:
           idealOffset = minOffset
@@ -311,11 +311,11 @@ export interface CompressedPositionManagerConfig extends PositionManagerConfig {
 export interface CompressedPositionManager
   extends PositionManager<CompressedPositionManagerConfig> {
   hasCompressedOffsets: boolean
-  compressIfRequired(offset: number, viewport: number): number
+  adjustOffset(offset: number, viewport: number): number
 }
 
 export function createCompressedPositionManager({
-  maxScrollSize = 1.5e9,
+  maxScrollSize = getMaxElementSize(),
   ...options
 }: CompressedPositionManagerConfig): CompressedPositionManager {
   const manager = createPositionManager(options)
@@ -338,21 +338,26 @@ export function createCompressedPositionManager({
       manager.configure(options)
     },
     find(offset, viewport) {
-      offset = decompressOffset(offset, viewport)
-
-      return manager.find(offset, viewport)
+      return manager.find(decompressOffset(offset, viewport), viewport)
     },
     computeUpdatedOffset(index, offset, viewport, mode) {
-      offset = decompressOffset(offset, viewport)
-
       return compressOffset(
-        manager.computeUpdatedOffset(index, offset, viewport, mode),
+        manager.computeUpdatedOffset(
+          index,
+          decompressOffset(offset, viewport),
+          viewport,
+          mode
+        ),
         viewport
       )
     },
-    compressIfRequired(offset, viewport) {
+    adjustOffset(offset, viewport) {
       if (this.hasCompressedOffsets) {
-        return compressOffset(offset, viewport)
+        const size = manager.size
+        const safeSize = compressed.size
+        const offsetPercentage = percentage(offset, viewport, safeSize)
+
+        return Math.round(offsetPercentage * (safeSize - size))
       }
 
       return offset
@@ -366,9 +371,9 @@ export function createCompressedPositionManager({
     if (size === safeSize) {
       return offset
     } else {
-      const offsetPercentage = percentage(offset, viewport, size)
+      const offsetPercentage = percentage(offset, viewport, safeSize)
 
-      return ~~(offsetPercentage * (safeSize - viewport))
+      return Math.round(offsetPercentage * (size - viewport))
     }
   }
 
@@ -379,9 +384,9 @@ export function createCompressedPositionManager({
     if (size === safeSize) {
       return offset
     } else {
-      const offsetPercentage = percentage(offset, viewport, safeSize)
+      const offsetPercentage = percentage(offset, viewport, size)
 
-      return ~~(offsetPercentage * (size - viewport))
+      return Math.round(offsetPercentage * (safeSize - viewport))
     }
   }
 
@@ -456,6 +461,22 @@ export function contract<T>(component: T): T {
   return component
 }
 
-function looseEqual<T>(a: T[], b: T[]): boolean {
-  return a === b || (a.length === b.length && a.every(item => b.includes(item)))
+const DEFAULT_MAX_ELEMENT_SIZE = 1500000
+const CHROME_MAX_ELEMENT_SIZE = 1.67771e7
+
+export function isBrowser() {
+  return typeof window !== 'undefined'
+}
+
+export function isChrome() {
+  return !!(window as any).chrome && !!(window as any).chrome.webstore
+}
+
+export function getMaxElementSize() {
+  if (isBrowser()) {
+    if (isChrome()) {
+      return CHROME_MAX_ELEMENT_SIZE
+    }
+  }
+  return DEFAULT_MAX_ELEMENT_SIZE
 }
