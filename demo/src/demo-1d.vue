@@ -13,7 +13,7 @@ export default {
     return {
       height: ~~((window.innerHeight - 16) * 0.33333),
       width: window.innerWidth - 16,
-      items: Array(500000)
+      items: Array(5000)
         .fill(0)
         .map(() => Math.random()),
     }
