@@ -2,7 +2,8 @@
   "private": true,
   "scripts": {
     "serve": "vue-cli-service serve",
-    "build": "vue-cli-service build"
+    "build": "vue-cli-service build",
+    "deploy": "surge dist virtualized.surge.sh"
   },
   "devDependencies": {
     "@vue/cli-plugin-typescript": "^3.4.0",
