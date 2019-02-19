@@ -39,8 +39,10 @@ interface AbstractListInterface extends Vue {
   _scrollToIndex: number | null
   _hasPendingRender: (() => void) | null
   _ignoreScrollEvents: boolean
+  _resetScrollState: NodeJS.Timeout
 }
 interface AbstractListData {
+  isScrolling: boolean
   scrollOffset: number
   scrollTrigger: ScrollTrigger
   scrollDirection: ScrollDirection
@@ -100,6 +102,7 @@ export default contract(
 
     data() {
       return {
+        isScrolling: false,
         scrollOffset: 0,
         scrollDirection: ScrollDirection.FORWARD,
         scrollTrigger: ScrollTrigger.NONE,
@@ -197,6 +200,13 @@ export default contract(
           this._horizontal ? el.scrollLeft : el.scrollTop
         )
         this._scrollToIndex = null // cancel pending scroll to index
+
+        clearTimeout(this._resetScrollState)
+        this._resetScrollState = setTimeout(
+          () => (this.isScrolling = false),
+          150
+        )
+        this.isScrolling = true
 
         this.computeScrollPosition(scrollOffset, ScrollTrigger.OBSERVED)
       },
@@ -340,6 +350,13 @@ export default contract(
       })
 
       mergeVnode(contents, {
+        data: {
+          style: this.isScrolling
+            ? {
+                pointerEvents: 'none',
+              }
+            : undefined,
+        },
         children: this.renderListItems(),
       })
 

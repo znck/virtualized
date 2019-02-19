@@ -6,7 +6,6 @@ import { mergeVnode, getFirstVnode, contract } from '../helpers'
 
 interface ListComputed {
   count: number
-  getProps: (index: number) => { index: number; item: any }
 }
 
 interface ListProps {
@@ -39,15 +38,11 @@ export default contract(
       count() {
         return typeof this.items === 'number' ? this.items : this.items.length
       },
-      getProps() {
-        if (typeof this.items === 'number')
-          return (index: number) => ({ index, item: index })
-
-        return (index: number) => ({ index, item: (this.items as any)[index] })
-      },
     },
 
     render(h) {
+      const items = Array.isArray(this.items) ? this.items : []
+
       return h(AbstractList, {
         props: {
           itemsCount: this.count,
@@ -58,7 +53,7 @@ export default contract(
         scopedSlots: {
           item: ({ index, compressedOffset }) => {
             const vnode = getFirstVnode(
-              this.$scopedSlots.default!(this.getProps(index))
+              this.$scopedSlots.default!({ index, item: items[index] })
             )
 
             mergeVnode(vnode, {

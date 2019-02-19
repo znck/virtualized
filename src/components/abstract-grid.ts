@@ -57,9 +57,11 @@ interface AbstractGridInstance extends Vue {
   }> | null
   _hasPendingRender: (() => void) | null
   _ignoreScrollEvents: boolean
+  _resetScrollState: NodeJS.Timeout
 }
 
 interface AbstractGridData {
+  isScrolling: boolean
   scrollTop: number
   scrollLeft: number
   scrollTrigger: ScrollTrigger
@@ -150,6 +152,7 @@ export default contract(
 
     data() {
       return {
+        isScrolling: false,
         scrollTop: 0,
         scrollLeft: 0,
         scrollTrigger: ScrollTrigger.NONE,
@@ -283,6 +286,13 @@ export default contract(
         const scrollLeft = Math.max(0, el.scrollLeft)
         const scrollTop = Math.max(0, el.scrollTop)
         this._scrollToCell = null // cancel pending scroll to index
+
+        clearTimeout(this._resetScrollState)
+        this._resetScrollState = setTimeout(
+          () => (this.isScrolling = false),
+          150
+        )
+        this.isScrolling = true
 
         this.computeScrollPosition(
           { left: scrollLeft, top: scrollTop },
@@ -510,6 +520,13 @@ export default contract(
       })
 
       mergeVnode(contents, {
+        data: {
+          style: this.isScrolling
+            ? {
+                pointerEvents: 'none',
+              }
+            : undefined,
+        },
         children: this.renderGridCells(),
       })
 
