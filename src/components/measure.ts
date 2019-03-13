@@ -46,11 +46,15 @@ export default contract(
 
     props: {
       rowIndex: PropTypes.number.isRequired,
-      columnIndex: PropTypes.number.value(0),
-      height: PropTypes.oneOfType(PropTypes.number, PropTypes.oneOf(false))
-        .isRequired,
-      width: PropTypes.oneOfType(PropTypes.number, PropTypes.oneOf(false))
-        .isRequired,
+      columnIndex: PropTypes.number.defaultValue(0),
+      height: PropTypes.oneOfType(
+        PropTypes.number,
+        PropTypes.oneOf(false)
+      ).defaultValue(false),
+      width: PropTypes.oneOfType(
+        PropTypes.number,
+        PropTypes.oneOf(false)
+      ).defaultValue(false),
     },
 
     inject: {
@@ -137,7 +141,7 @@ export default contract(
         measure: this.measureOrCached,
       })
 
-      PropTypes.validate(() => {
+      PropTypes.run(() => {
         if (!children || children.length > 1)
           console.warn('Requires only on child element.')
       })

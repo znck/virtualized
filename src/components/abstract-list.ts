@@ -9,62 +9,86 @@ import {
   CompressedPositionManager,
   createCompressedPositionManager,
   IndexRange,
-  mergeVnode,
   contract,
-  OffsetFitMode,
 } from '../helpers'
 import ResizeObserver from 'resize-observer-polyfill'
 import Measure, { MeasureEvent, MeasureEventInit } from './measure'
 
 interface ScrollRenderRange {
-  readonly visible: IndexRange
-  readonly rendered: IndexRange
-}
-
-interface ScrollRenderState extends ScrollRenderRange {
-  readonly index: number
-  readonly offset: number
-  readonly size: number
+  visible: IndexRange
+  rendered: IndexRange
 }
 
 interface AbstractListInterface extends Vue {
+  keepAliveInstancePoolSize: number
   resizeObserver: ResizeObserver
-  measured: MeasureCache
-  manager: CompressedPositionManager
-  vnodeCache: { [key: number]: VNode }
-  current: ScrollRenderRange
-  savedScrollState: ScrollRenderState
-  poolSize: number
-  _horizontal: boolean
-  _scrollToIndex: number | null
-  _hasPendingRender: (() => void) | null
-  _ignoreScrollEvents: boolean
-  _resetScrollState: NodeJS.Timeout
+  sizeManager: MeasureCache
+  positionManager: CompressedPositionManager
+  instanceCache: { [key: string]: VNode }
+  range: Readonly<ScrollRenderRange>
+  _rangeCache: Partial<ScrollRenderRange>
+  _direction: ListDirection
+  _hasPendingRender: boolean
 }
+
 interface AbstractListData {
-  isScrolling: boolean
-  scrollOffset: number
-  scrollTrigger: ScrollTrigger
   scrollDirection: ScrollDirection
 }
+
 interface AbstractListMethods {
-  onScroll(event: MouseEvent): void
   onItemMeasure(index: number): void
-  computePoolSize(): void
-  scrollTo(offset: number, preventEvent?: boolean, smooth?: boolean): void
-  scrollToIndex(index: number, mode?: OffsetFitMode, smooth?: boolean): void
-  computeScrollPosition(offset: number, trigger: ScrollTrigger): void
-  saveCurrentScrollState(): void
-  forceRenderInNextFrame(done: () => void): void
-  renderListItems(): VNode[]
+  renderItemsRange(start: number, end: number): VNode[]
+  renderItems(): VNode[]
+  forceRenderInTick(): void
 }
+
 interface AbstractListComputed {}
+
+export const enum ListDirection {
+  HORIZONTAL = 'horizontal',
+  VERTICAL = 'vertical',
+}
+
 interface AbstractListProps {
-  horizontal: boolean
+  /**
+   * Indicates list is scrolling. This prop is passed to `item` slot for possible render optimizations.
+   */
+  isScrolling: boolean
+  /**
+   * Scroll position of the list. Depending upon `direction` prop, it should be `scrollTop` or `scrollLeft` of the scroll container.
+   */
+  scrollOffset: number
+  /**
+   * Direction of the list.
+   *
+   * - __vertical:__ A list scrolling top to bottom.
+   * - __horizontal:__ A list scrolling left to right.
+   */
+  direction: ListDirection
+  /**
+   * Number of items in the list.
+   */
   itemsCount: number
-  overscanCount: number
-  containerSize: number
+  /**
+   * Number of extra items to render outside the viewport.
+   */
+  overscanItemsCount: number
+  /**
+   * Height or width of the viewport. (depends on `direction`)
+   */
+  viewportSize: number
+  /**
+   * Estimated width/height of an item.
+   */
   estimatedItemSize: number
+  /**
+   * Number of items (from start of the list) to be rendered always.
+   */
+  prefixFixedItemsCount: number
+  /**
+   * Number of items (from end of the list) to be rendered always.
+   */
+  suffixFixedItemsCount: number
 }
 
 export default contract(
@@ -78,11 +102,18 @@ export default contract(
     name: 'AbstractList',
 
     props: {
-      horizontal: PropTypes.bool.value(false),
+      scrollOffset: PropTypes.number.isRequired,
+      viewportSize: PropTypes.number.isRequired,
       itemsCount: PropTypes.number.isRequired,
-      overscanCount: PropTypes.number.value(1),
-      containerSize: PropTypes.number.isRequired,
-      estimatedItemSize: PropTypes.number.value(30),
+      estimatedItemSize: PropTypes.number.isRequired,
+      overscanItemsCount: PropTypes.number.defaultValue(3),
+      prefixFixedItemsCount: PropTypes.number.defaultValue(0),
+      suffixFixedItemsCount: PropTypes.number.defaultValue(0),
+      direction: PropTypes.oneOf(
+        ListDirection.HORIZONTAL,
+        ListDirection.VERTICAL
+      ).defaultValue(ListDirection.VERTICAL),
+      isScrolling: PropTypes.bool.defaultValue(false),
     },
 
     provide() {
@@ -90,7 +121,7 @@ export default contract(
 
       Object.defineProperties(provide, {
         [InjectKey.MEASURE_CACHE]: {
-          get: () => this.measured,
+          get: () => this.sizeManager,
         },
         [InjectKey.RESIZE_OBSERVER]: {
           get: () => this.resizeObserver,
@@ -102,39 +133,48 @@ export default contract(
 
     data() {
       return {
-        isScrolling: false,
-        scrollOffset: 0,
         scrollDirection: ScrollDirection.FORWARD,
-        scrollTrigger: ScrollTrigger.NONE,
       }
     },
 
     created() {
       const vm = this
-      this._horizontal = this.horizontal // cache and ignore changes
-      const measured = (this.measured = createMeasureCache({
-        ...(this._horizontal
-          ? { width: this.estimatedItemSize }
-          : { height: this.estimatedItemSize }),
+      this._direction = this.direction
+
+      const sizes = createMeasureCache({
         key: row => `${row}`,
-      }))
-      const manager = (this.manager = createCompressedPositionManager({
+        height: this.estimatedItemSize,
+        width: this.estimatedItemSize,
+      })
+
+      const position = createCompressedPositionManager({
         count: this.itemsCount,
         estimatedCellSize: this.estimatedItemSize,
-        sizeGetter: this._horizontal
-          ? index => (measured.has(index) ? measured.get(index).width : null)
-          : index => (measured.has(index) ? measured.get(index).height : null),
-      }))
+        sizeGetter:
+          this._direction === ListDirection.HORIZONTAL
+            ? index => (sizes.has(index) ? sizes.get(index).width : null)
+            : index => (sizes.has(index) ? sizes.get(index).height : null),
+      })
 
-      this.current = {
+      this.sizeManager = sizes
+      this.positionManager = position
+
+      this._rangeCache = {}
+      this.range = {
         get visible() {
-          return manager.find(vm.scrollOffset, vm.containerSize)
+          return (
+            vm._rangeCache.visible ||
+            (vm._rangeCache.visible = position.find(
+              vm.scrollOffset,
+              vm.viewportSize
+            ))
+          )
         },
         get rendered() {
           return overScanRange(
-            vm.current.visible,
+            vm.range.visible,
             vm.scrollDirection,
-            vm.overscanCount,
+            vm.overscanItemsCount,
             vm.itemsCount
           )
         },
@@ -156,12 +196,15 @@ export default contract(
         }
       })
 
-      this.vnodeCache = {}
+      this.instanceCache = {}
     },
 
     destroyed() {
-      const instances = Object.values(this.vnodeCache)
-      delete this.vnodeCache
+      const instances = Object.values(this.instanceCache)
+
+      delete this.instanceCache
+      delete this.positionManager
+      delete this.sizeManager
 
       instances.forEach(vnode => {
         if (vnode.componentInstance) vnode.componentInstance.$destroy()
@@ -170,124 +213,48 @@ export default contract(
 
     methods: {
       onItemMeasure(index) {
-        this._scrollToIndex = this.savedScrollState.index
-
-        this.manager.unset(index)
-        this.forceRenderInNextFrame(() => {
-          if (this._scrollToIndex) {
-            this._scrollToIndex = null // TODO: Adjust on resize.
-          }
-        })
-      },
-      saveCurrentScrollState() {
-        const index = this.current.visible.start
-        const { offset, size } = this.manager.get(index)
-
-        this.savedScrollState = {
-          visible: this.current.visible,
-          rendered: this.current.rendered,
-          index,
-          offset,
-          size,
-        }
-      },
-      onScroll(event) {
-        if (this._ignoreScrollEvents) return
-
-        const el = (event.target || this.$el) as HTMLElement
-        const scrollOffset = Math.max(
-          0,
-          this._horizontal ? el.scrollLeft : el.scrollTop
-        )
-        this._scrollToIndex = null // cancel pending scroll to index
-
-        clearTimeout(this._resetScrollState)
-        this._resetScrollState = setTimeout(
-          () => (this.isScrolling = false),
-          150
-        )
-        this.isScrolling = true
-
-        this.computeScrollPosition(scrollOffset, ScrollTrigger.OBSERVED)
+        this.positionManager.unset(index)
+        this.forceRenderInTick()
       },
 
-      computeScrollPosition(scrollOffset, trigger = ScrollTrigger.REQUESTED) {
-        if (scrollOffset < 0) return // Guard against negative scroll
-
-        if (scrollOffset !== this.scrollOffset) {
-          this.scrollTrigger = trigger
-          this.scrollDirection =
-            scrollOffset < this.scrollOffset
-              ? ScrollDirection.FORWARD
-              : ScrollDirection.REVERSE
-          this.scrollOffset = scrollOffset
-        }
-      },
-
-      forceRenderInNextFrame(fn) {
+      forceRenderInTick() {
         if (this._hasPendingRender) {
-          this._hasPendingRender = fn
           return
         }
 
-        this._hasPendingRender = fn
-        this.$nextTick(() => {
-          const done = this._hasPendingRender!
-          this._hasPendingRender = null
+        this._hasPendingRender = true
 
+        this.$nextTick(() => {
           this.$forceUpdate()
-          done()
         })
       },
 
-      computePoolSize() {
-        const { start, end } = this.current.rendered
-
-        const prevPoolSize = this.poolSize || 2
-
-        this.poolSize = Math.max(prevPoolSize, end - start + 2)
-      },
-
-      scrollTo(offset, preventEvent = false, smooth = true) {
-        const prevValue = this._ignoreScrollEvents
-        this._ignoreScrollEvents = preventEvent
-        this._horizontal
-          ? this.$el.scrollTo({
-              left: offset,
-              behavior: smooth ? 'smooth' : 'auto',
-            })
-          : this.$el.scrollTo({
-              top: offset,
-              behavior: smooth ? 'smooth' : 'auto',
-            })
-        this._ignoreScrollEvents = prevValue
-      },
-
-      scrollToIndex(index, mode = OffsetFitMode.AUTO, smooth = false) {
-        this.scrollTo(
-          this.manager.computeUpdatedOffset(
-            index,
-            this.scrollOffset,
-            this.containerSize,
-            mode
-          ),
-          false,
-          smooth
-        )
-      },
-
-      renderListItems() {
-        const { start, end } = this.current.rendered
+      renderItemsRange(start, end) {
         const children = []
-        const offsetAdjustment = this.manager.adjustOffset(
+        const offsetAdjustment = this.positionManager.adjustOffset(
           this.scrollOffset,
-          this.containerSize
+          this.viewportSize
         )
-
+        const {
+          isScrolling,
+          keepAliveInstancePoolSize,
+          prefixFixedItemsCount,
+          suffixFixedItemsCount,
+        } = this
+        const maxFixedPrefix = prefixFixedItemsCount
+        const minFixedSuffix = this.itemsCount - suffixFixedItemsCount - 1
+        const sizeKey =
+          this._direction === ListDirection.HORIZONTAL ? 'width' : 'height'
         for (let index = start; index <= end; ++index) {
-          const { offset, size } = this.manager.get(index)
-          const key = index % this.poolSize
+          const { offset, size } = this.positionManager.get(index)
+          const isFixedStart = index < maxFixedPrefix
+          const isFixedEnd = index > minFixedSuffix
+          const isFixed = isFixedStart || isFixedEnd
+          const key = isFixed
+            ? `index:${index}`
+            : `key:${index % keepAliveInstancePoolSize}`
           const compressedOffset = offset + offsetAdjustment
+
           const vnode = this.$createElement(
             Measure,
             {
@@ -296,8 +263,7 @@ export default contract(
               attrs: { key },
               props: {
                 rowIndex: index,
-                height: this._horizontal ? false : size,
-                width: this._horizontal ? size : false,
+                [sizeKey]: size,
               },
               on: { measure: this.onItemMeasure },
             },
@@ -306,59 +272,90 @@ export default contract(
               index,
               offset,
               size,
+              isScrolling,
+              isFixed,
+              isFixedStart,
+              isFixedEnd,
               compressedOffset,
             })
           )
 
-          if (this.vnodeCache[key])
-            vnode.componentInstance = this.vnodeCache[key].componentInstance
-          else this.vnodeCache[key] = vnode
+          if (this.instanceCache[key]) {
+            vnode.componentInstance = this.instanceCache[key].componentInstance
+          } else {
+            this.instanceCache[key] = vnode
+          }
           children.push(vnode)
         }
 
+        return children
+      },
+
+      renderItems() {
+        const { start, end } = this.range.rendered
+
+        const children: VNode[] = []
+
+        let actualStart = start
+        let actualEnd = end
+
+        if (this.prefixFixedItemsCount) {
+          children.push(
+            ...this.renderItemsRange(0, this.prefixFixedItemsCount - 1)
+          )
+
+          actualStart = Math.max(this.prefixFixedItemsCount, start)
+        }
+
+        const suffixStart = this.itemsCount - this.suffixFixedItemsCount
+
+        if (this.suffixFixedItemsCount) {
+          actualEnd = Math.min(end, suffixStart - 1)
+        }
+
+        children.push(...this.renderItemsRange(actualStart, actualEnd))
+
+        if (this.suffixFixedItemsCount) {
+          children.push(
+            ...this.renderItemsRange(suffixStart, this.itemsCount - 1)
+          )
+        }
         return children
       },
     },
 
     watch: {
       itemsCount(newCount: number) {
-        if (this.manager.length !== newCount) {
-          this.manager.configure({
+        if (this.positionManager.length !== newCount) {
+          this.positionManager.configure({
             count: newCount,
           })
-          this.$forceUpdate()
+          this.forceRenderInTick()
         }
+      },
+      scrollOffset(newOffset: number, oldOffset: number = 0) {
+        this.scrollDirection =
+          oldOffset < newOffset
+            ? ScrollDirection.FORWARD
+            : ScrollDirection.REVERSE
       },
     },
 
-    render(h) {
-      this.computePoolSize()
-      this.saveCurrentScrollState()
+    render() {
+      this._hasPendingRender = false // rendering now
+      this._rangeCache = {} // bust range caches
+
+      // Compute keepAlive pool size
+      this.keepAliveInstancePoolSize = Math.max(
+        this.keepAliveInstancePoolSize || 2,
+        this.range.rendered.end - this.range.rendered.start + 1
+      )
 
       const container = getFirstVnode(
-        this.$scopedSlots.container!({ size: this.containerSize })
-      )
-      const contents = getFirstVnode(
-        this.$scopedSlots.contents!({ size: this.manager.size })
+        this.$scopedSlots.container!({ size: this.positionManager.size })
       )
 
-      mergeVnode(container, {
-        data: {
-          on: { '&scroll': this.onScroll },
-        },
-        children: [contents],
-      })
-
-      mergeVnode(contents, {
-        data: {
-          style: this.isScrolling
-            ? {
-                pointerEvents: 'none',
-              }
-            : undefined,
-        },
-        children: this.renderListItems(),
-      })
+      container.children = this.renderItems()
 
       return container
     },

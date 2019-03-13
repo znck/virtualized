@@ -44,7 +44,7 @@ interface AbstractGridInstance extends Vue {
     row: CompressedPositionManager
     column: CompressedPositionManager
   }
-  vnodeCache: { [key: number]: VNode }
+  vnodeCache: { [key: string]: VNode }
   current: ScrollRenderRange
   savedScrollState: ScrollRenderState
   poolSize: {
@@ -240,6 +240,8 @@ export default contract(
     destroyed() {
       const instances = Object.values(this.vnodeCache)
       delete this.vnodeCache
+      delete this.manager
+      delete this.measured
 
       instances.forEach(vnode => {
         if (vnode.componentInstance) vnode.componentInstance.$destroy()

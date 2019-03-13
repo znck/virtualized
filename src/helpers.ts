@@ -1,10 +1,20 @@
 import { ScrollDirection } from './constants'
 
+/** A range of indices. */
 export interface IndexRange {
+  /** Starting index of the range. */
   start: number
+  /** Ending index of the range. */
   end: number
 }
 
+/**
+ * Calculates index range for smooth scrolling behavior using scroll direction and over scan count.
+ * @param range - Visible index range using windowing technique.
+ * @param direction - Scroll direction (forward or reverse).
+ * @param overScanCount - Number items to overscan.
+ * @param total - Total number of items in the list.
+ */
 export function overScanRange(
   { start, end }: IndexRange,
   direction: ScrollDirection,
@@ -22,6 +32,7 @@ export function overScanRange(
   return { start, end }
 }
 
+/** Size of an element. */
 export interface Size {
   height: number
   width: number
@@ -34,13 +45,56 @@ export interface MeasureCacheConfig {
 }
 
 export interface MeasureCache {
+  /**
+   * Is cell size measured?
+   * @param row - Row index of the cell.
+   * @param column - Column index of the cell.
+   */
   has(row: number, column?: number): boolean
+  /**
+   * Does maximum measured size exist?
+   *
+   * __NOTE:__ Use `row = Infinity` to find `column` max and `column = Infinity` to find `row` max.
+   *
+   * @param row - Row index of the cell.
+   * @param column - Column index of the cell.
+   */
   hasMax(row: number, column: number): boolean
+  /**
+   * Measured or estimated size of the cell.
+   * @param row - Row index of the cell.
+   * @param column - Column index of the cell.
+   */
   get(row: number, column?: number): Size
+  /**
+   * Set measured size of the cell.
+   * @param row - Row index of the cell.
+   * @param column - Column index of the cell.
+   * @param size - Size of the cell.
+   */
   set(row: number, column: number, size: Size): void
+  /**
+   * Is measured size equal to size?
+   * @param row - Row index of the cell.
+   * @param column - Column index of the cell.
+   * @param size - Size to match with measured size of the cell.
+   */
   is(row: number, column: number, size?: Size): boolean
+  /**
+   * Forget measured size.
+   * @param row - Row index of the cell.
+   * @param column - Column index of the cell.
+   */
   remove(row: number, column?: number): void
+  /**
+   * Maximum of cell heights in the row.
+   * @param row - Row index of the cell.
+   */
   rowHeight(row: number): number
+  /**
+   * Maximum of cell widths in the column.
+   * @param column - Column index of the cell.
+   */
   columnWidth(row: number): number
 }
 
@@ -148,6 +202,11 @@ export interface PositionManager<T = PositionManagerConfig> {
   configure(options: Partial<T>): void
   get(index: number): Position
   unset(index: number): void
+  /**
+   * Find index range which should be visible in the viewport window.
+   * @param offset - Scroll offset from top or left.
+   * @param viewport - Width/Height of the viewport.
+   */
   find(offset: number, viewport: number): IndexRange
   computeUpdatedOffset(
     index: number,
@@ -509,14 +568,23 @@ export function contract<T>(component: T): T {
 const DEFAULT_MAX_ELEMENT_SIZE = 1500000
 const CHROME_MAX_ELEMENT_SIZE = 1.67771e7
 
+/**
+ * Check if environment is browser.
+ */
 export function isBrowser() {
   return typeof window !== 'undefined'
 }
 
+/**
+ * Check if browser is chrome.
+ */
 export function isChrome() {
   return !!(window as any).chrome && !!(window as any).chrome.webstore
 }
 
+/**
+ * Get maximum pixel height of content.
+ */
 export function getMaxElementSize() {
   if (isBrowser()) {
     if (isChrome()) {

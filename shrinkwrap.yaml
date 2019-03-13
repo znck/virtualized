@@ -1,5 +1,5 @@
 dependencies:
-  '@znck/prop-types': 0.5.4
+  '@znck/prop-types': 0.6.1
   resize-observer-polyfill: 1.5.1
 devDependencies:
   '@babel/core': 7.2.2
@@ -695,12 +695,12 @@ packages:
     dev: true
     resolution:
       integrity: sha512-7NQmHra/JILCd1QqpSzl8+mJRc8ZHz3uDm8YV1Ks9IhK0epEiTw8aIErbvH9PI+6XbqhyIQy3462nEsn7UVzjQ==
-  /@znck/prop-types/0.5.4:
+  /@znck/prop-types/0.6.1:
     dependencies:
-      vue: 2.6.6
+      vue: 2.6.8
     dev: false
     resolution:
-      integrity: sha512-vtl2YGAroYO1C8kOBZ34pGF9kuyPHZsx/jcWHTe/eX8s4YsOue+CgV/2jnI9eMq5BghSXHARbujmUkw2qWr2AA==
+      integrity: sha512-QUAQCfw+KEsJOqHq3qc9NzJ/8Hg7IBeAxkbl6BLwcjiqvpTkb/FMGAgXFAYZiYKBPW7Q/eo0D4RNto87USyEhw==
   /abab/2.0.0:
     dev: true
     resolution:
@@ -5113,8 +5113,13 @@ packages:
     resolution:
       integrity: sha512-cliV19VHLJqFUYbz/XeWXe5CO6guzwd0yrrqqp0bmjlMP3ZZULY7fu8RTC4+3lmHwo6ESVDHFDsvjB15hcR5IA==
   /vue/2.6.6:
+    dev: true
     resolution:
       integrity: sha512-Y2DdOZD8sxApS+iUlwv1v8U1qN41kq6Kw45lM6nVZKhygeWA49q7VCCXkjXqeDBXgurrKWkYQ9cJeEJwAq0b9Q==
+  /vue/2.6.8:
+    dev: false
+    resolution:
+      integrity: sha512-+vp9lEC2Kt3yom673pzg1J7T1NVGuGzO9j8Wxno+rQN2WYVBX2pyo/RGQ3fXCLh2Pk76Skw/laAPCuBuEQ4diw==
   /w3c-hr-time/1.0.1:
     dependencies:
       browser-process-hrtime: 0.1.3
@@ -5283,7 +5288,7 @@ specifiers:
   '@babel/preset-env': ^7.2.0
   '@types/jest': ^24.0.1
   '@types/node': ^11.9.3
-  '@znck/prop-types': ^0.5.4
+  '@znck/prop-types': ^0.6.1
   any-observable: ^0.3.0
   babel-jest: ^24.0.0
   husky: ^1.3.0

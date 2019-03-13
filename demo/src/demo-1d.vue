@@ -35,8 +35,8 @@ export default {
         <Item :msg="`${item} at index ${index}`"/>
       </div>
     </Carousal>
-    <List :items="items" :height="height * 2" v-slot="{ index, item, key }">
-      <div class="item" :style="{backgroundColor: `hsl(${(index * 10) % 361}, 60%, 80%)` }">
+    <List :items="items" :height="height * 2" v-slot="{ index, item, key, isFixedStart }">
+      <div class="item" :style="{backgroundColor: `hsl(${(index * 10) % 361}, 60%, 80%)`, position: isFixedStart ? 'sticky' : '', top: 0 }">
         <img :key="key" :src="`https://picsum.photos/400/200?image=${index % 10}`">
         <Item :msg="`${item} at index ${index}`"/>
       </div>
